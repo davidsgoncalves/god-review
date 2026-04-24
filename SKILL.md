@@ -272,33 +272,57 @@ Resumo no final:
 
 ```
 ───────────────────────────────────────────────────────────────────────────
-  5 comentários · 1 blocking, 2 suggestion, 2 nit · overall: COMMENT
-  Próximo estado do review: REQUEST_CHANGES (há blocking)
+  3 comentários · 1 bloqueante, 1 sugestão, 1 detalhe
 ───────────────────────────────────────────────────────────────────────────
 
-O que fazer?
-  • "ok" / "aprovar" — publica tudo como está
-  • "remover 2, 4" — exclui comentários específicos
-  • "editar 3" — entra em modo edição pro comentário 3
-  • "escalar 5 blocking" — muda prefixo de um comentário
-  • "cancelar" — descarta tudo, não publica
+O que fazer? (escolha 1 verbo)
+
+  VERBO DE PUBLICAÇÃO (comentários → PR)
+    • "comentar"         — publica TODOS os comentários como review COMMENT
+    • "comentar 1, 2"    — publica SÓ os comentários 1 e 2 como COMMENT
+    • "pedir mudanças"   — publica TODOS como REQUEST_CHANGES
+    • "pedir mudanças 1" — publica SÓ o 1 como REQUEST_CHANGES
+
+  VERBO DE APROVAÇÃO (sem comentários)
+    • "aprovar"          — APPROVE do PR, sem publicar comentário nenhum
+
+  CURADORIA (antes de publicar, não finaliza)
+    • "remover 2, 4"
+    • "editar 3"
+    • "escalar 3 dúvida" / "rebaixar 1 detalhe"
+    • "adicionar <path>:<line> <prefix> <texto>"
+
+  DESCARTE
+    • "cancelar" — descarta o batch, não publica nada
 ```
 
 #### 3.4 Processar resposta do usuário
 
-Loop até o usuário dizer `ok`/`aprovar` ou `cancelar`:
-- `remover N, M` → tira da lista.
-- `editar N` → pedir novo texto, substituir body preservando path/line/prefix.
-- `escalar N {prefix}` → trocar prefix (regerar body mantendo conteúdo).
-- `adicionar {path}:{line} {prefix} {texto}` → permite usuário inserir comentário que a skill não viu.
-- Depois de qualquer edição, re-apresentar só os blocos afetados + novo resumo.
+Gramática dos comandos (não há inferência de event — sempre vem do verbo):
+
+| Input do usuário | Event | Comentários publicados |
+|------------------|-------|------------------------|
+| `aprovar` | `APPROVE` | **nenhum** |
+| `comentar` | `COMMENT` | **todos** |
+| `comentar 1, 2` | `COMMENT` | apenas 1 e 2 |
+| `pedir mudanças` | `REQUEST_CHANGES` | todos |
+| `pedir mudanças 1, 2` | `REQUEST_CHANGES` | apenas 1 e 2 |
+| `cancelar` | — | não publica |
+
+Comandos de curadoria (`remover`, `editar`, `escalar`, `rebaixar`, `adicionar`) não finalizam o review — apenas modificam o batch. Depois deles, a skill reapresenta o estado e continua esperando um verbo terminal (`aprovar`, `comentar`, `pedir mudanças`, `cancelar`).
+
+**Resolução de ambiguidade:**
+- Input sem verbo claro (`ok`, `manda`, `beleza`, `pode ser`) → a skill **pergunta** "aprovar, comentar ou pedir mudanças?". Nunca chutar.
+- Número inválido em `comentar 5` quando só existem 3 → avisar e não publicar.
+- Se o batch tem algum `bloqueante:` e o usuário disser `aprovar`, confirmar 1 vez: "Quer APPROVE mesmo com N bloqueante(s) no batch? Eles serão descartados."
+
+**Legado proibido:** não inferir `event` a partir da presença de `bloqueante:`/`blocking:` no batch. O event sai **sempre** do verbo explícito do usuário.
+
+Depois de qualquer edição (remover/editar/escalar), re-apresentar só os blocos afetados + novo resumo + menu de verbos.
 
 #### 3.5 Publicar via GitHub API
 
-Determinar `event` do review:
-- Há algum comentário `blocking:` → `REQUEST_CHANGES`.
-- Tem comentários mas nenhum blocking → `COMMENT`.
-- Zero comentários + usuário explicitamente disse "aprovar" → `APPROVE`.
+O `event` vem direto do verbo do usuário (ver tabela acima). Nunca inferir.
 
 Publicar tudo num único review (atomicidade):
 
