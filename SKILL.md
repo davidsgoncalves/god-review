@@ -153,12 +153,24 @@ gh api /notifications --paginate \
 
 Filtrar por repos presentes em `review-config.yml`. O `updated_at` de cada notification é o sinal de "tem atividade nova que você ainda não viu".
 
+**IMPORTANTE — filtrar por estado do PR:** notifications ficam no inbox mesmo depois que o PR é mergeado ou fechado. Sem filtro adicional, PRs já fechados aparecem na tabela e o usuário acaba revisando código morto. Antes de apresentar a tabela, para **cada** candidato do Caso B, buscar o estado do PR e descartar os que não forem `OPEN`:
+
+```bash
+gh pr view {n} --repo {owner/repo} --json state
+```
+
+Agrupar por repo e fazer em batch quando possível. Se o volume for grande (>30 candidatos), considerar `gh api /search/issues?q=is:pr+is:open+repo:{owner/repo}` e interseccionar com os números das notifications.
+
 Abordagem secundária (se o usuário limpa notifications com frequência):
 1. Listar PRs abertos onde ele deu review: `gh search prs --reviewed-by=@me --state=open --json number,repository,url,updatedAt`.
 2. Para cada um, buscar timestamp do último review dele: `gh api /repos/{owner}/{repo}/pulls/{n}/reviews --jq '[.[] | select(.user.login == "{user}")] | max_by(.submitted_at) | .submitted_at'`.
 3. Comparar com `updatedAt` do PR. Se PR foi atualizado depois e o updater não é ele, está pendente.
 
 Merge dos resultados de A e B, deduplicar por `owner/repo#number`.
+
+**Guard antes de revisar (defesa em profundidade):** mesmo com o filtro acima, reconsultar `state` no 3.1 (coleta de contexto) antes de gerar comentários. Se voltar `MERGED` / `CLOSED`, interromper e avisar o usuário — o PR pode ter sido fechado entre a tabela e a seleção (race comum quando o usuário revisa algo que acabou de ser aprovado por outra pessoa).
+
+**Filtrar PRs do próprio usuário:** descartar PRs cujo `author.login == github_user`. Caso A (`--review-requested=@me`) naturalmente não traz seus próprios PRs, mas Caso B (notifications) traz — você pode ser mencionado ou comentar em PR seu. Incluir filtro `author.login != github_user` no merge final.
 
 ### 2. Apresentar tabela
 
